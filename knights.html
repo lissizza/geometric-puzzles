@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>Головоломка с Конями</title>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+    }
+    #app {
+      max-width: 500px;
+      margin: 0 auto;
+      text-align: center;
+    }
+    .game-board {
+      display: grid;
+      grid-template-columns: repeat(4, 60px);
+      grid-gap: 2px;
+      margin: 20px auto;
+      justify-content: center;
+    }
+    .cell {
+      width: 60px;
+      height: 60px;
+      background-color: #f0d9b5;
+      position: relative;
+      border: 1px solid #b58863;
+    }
+    .cell--unavailable {
+      background-color: transparent;
+      border: none;
+    }
+    .cell--highlighted {
+      background-color: #ffeb3b;
+    }
+    .piece {
+      width: 100%;
+      height: 100%;
+      cursor: pointer;
+    }
+    .piece--white {
+      background: url('https://upload.wikimedia.org/wikipedia/commons/7/70/Chess_nlt45.svg') no-repeat center;
+      background-size: 50px 50px;
+    }
+    .piece--black {
+      background: url('https://upload.wikimedia.org/wikipedia/commons/e/ef/Chess_ndt45.svg') no-repeat center;
+      background-size: 50px 50px;
+    }
+    .message {
+      font-size: 18px;
+      font-weight: bold;
+      color: green;
+    }
+    .reset-button {
+      margin-top: 20px;
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <h1>Knight Puzzle</h1>
+    <p>Swap the black and white knights by moving them according to the chess knight's rules.</p>
+    <p>Starting position: black at the bottom, white at the top.</p>
+    <div class="game-board">
+      <div
+        v-for="cell in flattenedGrid"
+        :key="cell.x + '-' + cell.y"
+        :class="['cell', 
+                 { 'cell--unavailable': !cell.accessible, 
+                   'cell--highlighted': cell.highlighted }]"
+        @click="onCellClick(cell)"
+      >
+        <div
+          v-if="cell.piece"
+          :class="['piece', `piece--${cell.piece.color}`]"
+          @click.stop="onPieceClick(cell.piece)"
+        ></div>
+      </div>
+    </div>
+    <div class="message" v-if="victoryMessage">{{ victoryMessage }}</div>
+    <button class="reset-button" @click="resetGame">Сбросить игру</button>
+  </div>
+
+  <script>
+    const { createApp, ref, computed } = Vue;
+
+    createApp({
+      setup() {
+        const initialPieces = [
+          {
+            id: 1,
+            type: 'knight',
+            color: 'black',
+            position: { x: 0, y: 3 },
+          },
+          {
+            id: 2,
+            type: 'knight',
+            color: 'black',
+            position: { x: 2, y: 3 },
+          },
+          {
+            id: 3,
+            type: 'knight',
+            color: 'white',
+            position: { x: 1, y: 0 },
+          },
+          {
+            id: 4,
+            type: 'knight',
+            color: 'white',
+            position: { x: 2, y: 2 },
+          },
+        ];
+
+        const initialGrid = [
+          [null, { x: 1, y: 0 }, null, null],
+          [null, { x: 1, y: 1 }, { x: 2, y: 1 }, null],
+          [null, { x: 1, y: 2 }, { x: 2, y: 2 }, { x: 3, y: 2 }],
+          [{ x: 0, y: 3 }, { x: 1, y: 3 }, { x: 2, y: 3 }, { x: 3, y: 3 }],
+        ];
+
+        const pieces = ref(JSON.parse(JSON.stringify(initialPieces)));
+        const selectedPiece = ref(null);
+        const possibleMoves = ref([]);
+        const victoryMessage = ref('');
+
+        const isPieceAtPosition = (x, y) => {
+          return pieces.value.some(
+            piece => piece.position.x === x && piece.position.y === y
+          );
+        };
+
+        const isCellAccessible = (x, y) => {
+          return (
+            x >= 0 &&
+            y >= 0 &&
+            y < 4 &&
+            x < 4 &&
+            initialGrid[y][x] &&
+            !isPieceAtPosition(x, y)
+          );
+        };
+
+        const getKnightMoves = position => {
+          const moves = [
+            { x: position.x + 1, y: position.y + 2 },
+            { x: position.x + 1, y: position.y - 2 },
+            { x: position.x - 1, y: position.y + 2 },
+            { x: position.x - 1, y: position.y - 2 },
+            { x: position.x + 2, y: position.y + 1 },
+            { x: position.x + 2, y: position.y - 1 },
+            { x: position.x - 2, y: position.y + 1 },
+            { x: position.x - 2, y: position.y - 1 },
+          ];
+
+          return moves.filter(move => isCellAccessible(move.x, move.y));
+        };
+
+        const flattenedGrid = computed(() => {
+          const flattened = [];
+          for (let y = 0; y < initialGrid.length; y++) {
+            for (let x = 0; x < initialGrid[y].length; x++) {
+              const cell = initialGrid[y][x];
+              if (cell) {
+                const piece = pieces.value.find(
+                  p => p.position.x === x && p.position.y === y
+                );
+                flattened.push({
+                  x,
+                  y,
+                  accessible: true,
+                  piece,
+                  highlighted: possibleMoves.value.some(
+                    move => move.x === x && move.y === y
+                  ),
+                });
+              } else {
+                flattened.push({
+                  x,
+                  y,
+                  accessible: false,
+                  piece: null,
+                  highlighted: false,
+                });
+              }
+            }
+          }
+          return flattened;
+        });
+
+        const onPieceClick = piece => {
+          selectedPiece.value = piece;
+          possibleMoves.value = getKnightMoves(piece.position);
+        };
+
+        const onCellClick = cell => {
+          if (
+            selectedPiece.value &&
+            possibleMoves.value.some(
+              move => move.x === cell.x && move.y === cell.y
+            )
+          ) {
+            selectedPiece.value.position = { x: cell.x, y: cell.y };
+            selectedPiece.value = null;
+            possibleMoves.value = [];
+
+            if (checkVictory()) {
+              victoryMessage.value = 'Congratulations, you won!';
+            }
+          } else {
+            // reset choice if clicked on an unavailable cell
+            selectedPiece.value = null;
+            possibleMoves.value = [];
+          }
+        };
+
+        const checkVictory = () => {
+          const blackPositions = pieces.value
+            .filter(piece => piece.color === 'black')
+            .map(piece => `${piece.position.x},${piece.position.y}`)
+            .sort()
+            .join(';');
+
+          const whitePositions = pieces.value
+            .filter(piece => piece.color === 'white')
+            .map(piece => `${piece.position.x},${piece.position.y}`)
+            .sort()
+            .join(';');
+
+          const targetBlackPositions = ['1,0', '2,2'].sort().join(';');
+          const targetWhitePositions = ['0,3', '2,3'].sort().join(';');
+
+          return (
+            blackPositions === targetBlackPositions &&
+            whitePositions === targetWhitePositions
+          );
+        };
+
+        const resetGame = () => {
+          pieces.value = JSON.parse(JSON.stringify(initialPieces));
+          selectedPiece.value = null;
+          possibleMoves.value = [];
+          victoryMessage.value = '';
+        };
+
+        return {
+          pieces,
+          selectedPiece,
+          possibleMoves,
+          flattenedGrid,
+          onPieceClick,
+          onCellClick,
+          victoryMessage,
+          resetGame,
+        };
+      },
+    }).mount('#app');
+  </script>
+</body>
+</html>
